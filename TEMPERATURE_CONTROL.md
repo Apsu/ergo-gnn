@@ -10,59 +10,64 @@ The temperature parameter controls how the GNN distributes attention across conv
 ## Key Files
 
 ### 1. `train_gnn.py`
-- Modified `score_relevance()` method to accept temperature parameter
+- `score_relevance()` method accepts temperature parameter
 - Default temperature = 1.0 during training
 - No retraining needed for different temperatures at inference
 
-### 2. `conversation_graph_retriever.py`
-- `ConversationGraphRetriever` class for inference-time retrieval
-- Temperature presets for different query types:
-  - `follow_up`: 0.8 (recent focus)
-  - `general`: 1.5 (balanced)
-  - `debugging`: 2.0 (look far back)
-  - `exploration`: 3.0 (full history)
+### 2. `simple_graph_manager.py`
+- Core graph management with temperature support
+- `get_relevant_context()` and `build_llm_messages()` accept temperature parameter
+- Default temperature = 1.5 for balanced retrieval
 
-### 3. `evaluate_conversation_gnn.py`
+### 3. `evaluate_unified.py`
 - `--temperature` flag for evaluation
-- `--temperature-sweep` for analyzing effects
-- Generates comparison visualizations
+- Supports both dataset evaluation and REPL modes
+- Generates attention visualization heatmaps
 
-### 4. `evaluate_live_chat.py`
-- Full pipeline demo with OpenAI integration
-- Three modes:
-  - `interactive`: Start fresh conversation
-  - `scripted`: Run predefined script
-  - `repl`: Load history, then interact
+### 4. `simple_live_chat.py`
+- Live chat demo with temperature control
+- `temp <value>` command to adjust temperature dynamically
+- `temp presets` shows recommended values:
+  - `follow_up`: 0.8 (recent focus)
+  - `clarification`: 1.0 (balanced)
+  - `reference`: 1.5 (look moderately far back)
+  - `debugging`: 2.0 (look far back)
+  - `summary`: 2.5 (very broad context)
+  - `exploration`: 3.0 (full history)
 
 ## Usage Examples
 
-### Basic Evaluation with Temperature
+### Dataset Evaluation with Temperature
 ```bash
-python evaluate_conversation_gnn.py \
-  --model-path checkpoints/best_model.pt \
-  --temperature 2.0
+python evaluate_unified.py \
+  --model-path checkpoints/models/conversation_gnn.pt \
+  --mode dataset \
+  --temperature 2.0 \
+  --num-samples 10
 ```
 
-### Temperature Sweep Analysis
+### Interactive REPL Mode
 ```bash
-python evaluate_conversation_gnn.py \
-  --model-path checkpoints/best_model.pt \
-  --temperature-sweep
-```
-
-### Live Chat Demo (REPL mode)
-```bash
-python evaluate_live_chat.py \
-  --gnn-checkpoint checkpoints/best_model.pt \
+python evaluate_unified.py \
+  --model-path checkpoints/models/conversation_gnn.pt \
+  --mode repl \
   --openai-key YOUR_KEY \
-  --demo-mode repl \
-  --script-file sample_conversation_script.json \
   --temperature 1.5
 ```
 
-### Interactive Commands in REPL
+### Live Chat Demo
+```bash
+python simple_live_chat.py \
+  --gnn-checkpoint checkpoints/models/conversation_gnn.pt \
+  --openai-key YOUR_KEY \
+  --temperature 1.5
+```
+
+### Interactive Commands
+In both `simple_live_chat.py` and REPL mode:
 - `temp 2.0` - Change temperature dynamically
-- `graph` - Visualize conversation graph
+- `temp presets` - Show temperature presets
+- `stats` - Show graph statistics
 - `quit` - Exit
 
 ## Temperature Effects
@@ -99,23 +104,28 @@ python evaluate_live_chat.py \
 ## API Example
 
 ```python
-from conversation_graph_retriever import ConversationGraphRetriever
+from simple_graph_manager import SimpleGraphManager
+from train_gnn import ConversationGNN
 
-retriever = ConversationGraphRetriever(model, default_temperature=1.5)
+# Load model
+model = ConversationGNN(...)
+manager = SimpleGraphManager(model)
 
-# Manual temperature
-context = retriever.get_relevant_context(
-    query_embedding, 
-    graph_embeddings,
-    messages,
-    temperature=2.0
+# Add messages
+manager.add_message('user', 'Tell me about caching strategies')
+manager.add_message('assistant', 'Caching is a technique...')
+
+# Get context with custom temperature
+context, indices = manager.get_relevant_context(
+    query_idx=1,
+    temperature=2.0,  # Look broadly for related context
+    top_k=10
 )
 
-# Automatic based on query type
-context = retriever.get_relevant_context(
-    query_embedding,
-    graph_embeddings, 
-    messages,
-    query_type='debugging'  # Uses temperature=2.0
+# Build LLM messages with temperature
+messages = manager.build_llm_messages(
+    query_idx=1,
+    system_prompt="You are a helpful assistant",
+    temperature=1.5  # Balanced retrieval
 )
 ```
